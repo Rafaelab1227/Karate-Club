@@ -1,0 +1,193 @@
+---
+title: "Karate Club Network Analysis"
+author: "Rafaela Becerra"
+output:
+  html_document:
+    number_sections: yes
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+# Karate Club
+## Packages needed
+
+```{r message=FALSE}
+library(igraph)
+library(igraphdata)
+library(kableExtra)
+
+```
+
+## Load the karate network from the igraph package of R.
+```{r}
+?karate
+data(karate)
+karate
+```
+## Important aspects of the network
+
+This network presents the social relations among members of a university karate club, the principal characters are John A which is the president, and the instructor Mr.Hi. The vertices will correspond to the number of the member and the edges weights will correspond to the common activities between them.This network presents two subgroups since the karate club was split into two separate factions.
+
+**Vertices**
+
+The number of vertices:
+```{r}
+gorder(karate)
+```
+
+The attributes are given by:
+
+- **Faction**: the faction of each actor in the network (1 or 2).
+- **name**: the name of each actor in the network.
+- **label**: the label of each actor in the network that corresponds to a number.
+- **color**: the same division given by faction.
+
+```{r}
+vertex_attr_names(karate)
+vertex_attr(karate)
+```
+
+**Edges**
+
+The number of edges:
+
+```{r}
+gsize(karate)
+```
+
+The only attribute of the edges corresponds to the weight given by the number of common activities between the members of the club.
+
+```{r}
+edge_attr_names(karate)
+```
+
+It is a simple graph:
+```{r}
+is_simple(karate)
+```
+
+```{r fig.align="center"}
+set.seed(1234)
+V(karate)[Faction==1]$color <- "deepskyblue2"
+V(karate)[Faction==2]$color <- "chartreuse3"
+
+plot.igraph(karate,
+            layout=layout_with_dh,
+            main="Karate network with Davidson-Harel layout",
+            vertex.size=12,
+            vertex.label.cex=0.8,
+            edge.label=E(karate)$weight,
+            edge.label.cex=0.75,
+            edge.label.color='black'
+            )
+legend(x = "topright",
+       legend = c('Faction 1','Faction 2'),
+       pch = 19,
+       cex = 0.595, 
+       col = c('deepskyblue2', 'chartreuse3'),
+       bty = "n",
+       title = "Karate club factions")
+
+legend(x = "bottomleft",
+       legend = c('1 Academic classes','2 Member in private studio',
+                  '3 Member in private studio wnd','4 Student teaching',
+                  '5 Interaction at the university', '6 Interaction student-oriented bar',
+                  '7 Attendance open tournaments', 
+                  '8 Attendance intercollegiate tournaments'),
+       pch = 15,
+       bty = "n",
+       ncol=1,
+       cex = 0.595, 
+       y.intersp=1,
+       x.intersp=1,
+       title = "Type of edges based on activities")
+```
+
+```{r}
+data.v <- as_data_frame(karate, what='vertices')
+
+f1 <- data.v[match(as_edgelist(karate)[,1], data.v$name),1]
+f2 <- data.v[match(as_edgelist(karate)[,2], data.v$name),1]
+
+m <- matrix(nrow=2*gsize(karate),ncol=2)
+m[,1] <- rbind(f1,f2)
+m[,2] <- rbind(f2,f1)
+data.v.faction <- table(m[,1],m[,2])
+rownames(data.v.faction)<- c('Faction 1', 'Faction 2')
+colnames(data.v.faction)<- c('Faction 1', 'Faction 2')
+
+kable(data.v.faction) %>%
+  kable_styling(bootstrap_options = "striped", full_width = F)
+
+```
+As the table above shows, the total number of edges that are between members of the same faction is 136, this represents the 87.18% of the total connections, given an idea that it is important the relation of the members to determine the belonging of it to one of the factions.
+
+## Nearest neighbor prediction for the attribute Faction. 
+
+Being $i$ part of the set of vertices $V$, for each unknown ${X}_{i}$ we will predict its value based on its neighbors average which can be express as: 
+
+$$\bar{X}_{i}=\frac{\sum_{j \in N_{i}} X_{j}}{\left|N_{i}\right|}$$
+Where, $N_{i}$ is the set of neighbors of the vertex, and ${\left|N_{i}\right|}$ the cardinality of the set.
+
+Then, for each member in the network we will obtain its neighbors, and next we will predict the faction of each vertex based on the nearest neighbor prediction.Finally, we will compare the predicted value with the true value to see the performance of the method.
+
+
+```{r}
+set.seed(1234)
+
+# Vector that will contain the prediction of the faction for every member.
+pred<- vector(mode="numeric",length=gorder(karate))
+
+# Indicator vector of the successes of the prediction (1, if the prediction if good, 0 is the prediction is not good).
+ind <- vector(mode="numeric",length=gorder(karate))
+
+# Loop to obtain the prediction for each vertex 
+for (i in 1 : gorder(karate)){
+  
+# Vector with the faction for the neighbors of the vertex under consideration.
+  neigh <- V(karate)$Faction[as.numeric(neighbors(karate,i))]
+
+# Mean value of the faction, if there is equal amount of neighbors in 1 and two just take a sample
+# with equal probability.
+  mean.faction <- as.numeric(which(table(neigh)==max(table(neigh))))
+  if (length(mean.faction) == 2){
+    pred[i] <- sample(mean.faction,1)
+  } else {
+    pred[i] <- mean.faction
+  }
+
+# Additionally if condition to tables that present neighbors with just one type of faction.  
+  if (length(table(neigh))==1){
+    pred[i] <- sample(neigh,1) 
+  }
+  ind[i] <- 1*(pred[i]==V(karate)$Faction[i])
+}
+
+# Creation of rates
+num.successes <- sum(ind)
+num.successes
+prop.successes <- num.successes / gorder(karate)
+prop.successes
+```
+
+```{r fig.align="center"}
+V(karate)$color <- c('cadetblue3','chocolate1')[ind+1]
+
+plot.igraph(karate,
+            layout=layout_with_dh,
+            main="Karate network with Davidson-Harel layout",
+            vertex.size=12,
+            vertex.label.cex=0.8,
+            )
+legend(x = "topright",
+       legend = c('Wrongly predicted','Successfully predicted'),
+       pch = 19,
+       cex = 0.595, 
+       col = c('cadetblue3','chocolate1'),
+       bty = "n",
+       title = "Karate club faction predictions")
+```
+The results show that the prediction error is really low considering that the method presented a 94.11% of correct predictions for the faction of the members of the club, this involves a succes in 32 vertices out of 34. Moreover, we can see that the wrongly predicted factions are for vertices for which we have the same number of neighbors for both factions, in this case are 3 and 10, consequently, it is just the error of taking randomly, with the same probability, a sample. The low error rate can be attributed to the fact that we are facing a dataset that presents a division of the characters in factions based on the relationships that the members have given by their participation in the club, since the club has been divided, it is highly probable that the chacters relate more to the ones of their same faction of the club, and those as well to other members in the group. 
